@@ -1,0 +1,1087 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fruit Math Slicer</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@400;600;700;800&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0a1628;
+    font-family: 'Nunito', sans-serif;
+    overflow: hidden;
+    user-select: none;
+    cursor: crosshair;
+  }
+
+  #game-container {
+    width: 100vw;
+    height: 100vh;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* ── Background ── */
+  #bg {
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse at 50% 20%, #1a2f5e 0%, #0a1628 60%);
+  }
+
+  .star {
+    position: absolute;
+    width: 2px; height: 2px;
+    background: white;
+    border-radius: 50%;
+    opacity: 0.6;
+    animation: twinkle 3s infinite alternate;
+  }
+
+  @keyframes twinkle { from { opacity: 0.3; } to { opacity: 0.9; } }
+
+  /* ── HUD ── */
+  #hud {
+    position: absolute; top: 0; left: 0; right: 0;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 20px;
+    z-index: 50;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.45), transparent);
+  }
+
+  #level-badge {
+    font-family: 'Fredoka One', cursive;
+    font-size: 18px;
+    color: #ffd166;
+    background: rgba(255,209,102,0.15);
+    border: 1.5px solid rgba(255,209,102,0.4);
+    border-radius: 20px;
+    padding: 4px 14px;
+    letter-spacing: 1px;
+  }
+
+  #score-display {
+    font-family: 'Fredoka One', cursive;
+    font-size: 26px;
+    color: white;
+    text-shadow: 0 0 12px rgba(255,255,255,0.3);
+  }
+
+  #hearts-display {
+    display: flex; gap: 6px;
+    font-size: 24px;
+  }
+
+  .heart { transition: transform 0.2s; position: relative; }
+  .heart.lost { opacity: 0.2; transform: scale(0.8); }
+  .heart.half::after {
+    content: '🖤';
+    position: absolute; left: 0; top: 0;
+    clip-path: inset(0 50% 0 0);
+    font-size: 24px;
+    opacity: 0.85;
+  }
+
+  /* Bomb */
+  .bomb {
+    position: absolute;
+    width: 70px; height: 70px;
+    display: flex; align-items: center; justify-content: center;
+    flex-direction: column;
+    cursor: crosshair;
+    z-index: 20;
+    pointer-events: all;
+    animation: bomb-wobble 0.5s infinite alternate ease-in-out;
+  }
+  @keyframes bomb-wobble {
+    from { transform: rotate(-6deg); }
+    to   { transform: rotate(6deg); }
+  }
+  .bomb-emoji { font-size: 46px; line-height: 1; filter: drop-shadow(0 0 8px rgba(255,80,0,0.7)); }
+  .bomb.exploded {
+    pointer-events: none;
+    animation: bomb-explode 0.4s ease-out forwards;
+  }
+  @keyframes bomb-explode {
+    0%   { transform: scale(1); opacity: 1; filter: brightness(3); }
+    40%  { transform: scale(2.2); opacity: 0.8; }
+    100% { transform: scale(0.1); opacity: 0; }
+  }
+
+  /* ── Prompt bar ── */
+  #prompt-bar {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    padding: 14px 20px 18px;
+    background: linear-gradient(to top, rgba(0,0,0,0.6), transparent);
+    text-align: center;
+    z-index: 50;
+  }
+
+  #prompt-text {
+    font-family: 'Fredoka One', cursive;
+    font-size: 22px;
+    color: white;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.8);
+    letter-spacing: 0.5px;
+  }
+
+  #prompt-text span.highlight {
+    color: #ffd166;
+    font-size: 26px;
+  }
+
+  /* ── Fruits ── */
+  .fruit {
+    position: absolute;
+    width: 70px; height: 70px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    flex-direction: column;
+    cursor: crosshair;
+    transition: filter 0.1s;
+    z-index: 20;
+    pointer-events: all;
+  }
+
+  .fruit-number {
+    font-family: 'Fredoka One', cursive;
+    font-size: 22px;
+    color: white;
+    text-shadow: 0 1px 4px rgba(0,0,0,0.6);
+    line-height: 1;
+  }
+
+  .fruit-emoji {
+    font-size: 36px;
+    line-height: 1;
+  }
+
+  .fruit.sliced {
+    pointer-events: none;
+    animation: slice-burst 0.35s ease-out forwards;
+  }
+
+  .fruit.missed {
+    animation: fade-drop 0.4s ease-in forwards;
+  }
+
+  @keyframes slice-burst {
+    0%   { transform: scale(1); opacity: 1; filter: brightness(2); }
+    50%  { transform: scale(1.4); opacity: 0.8; }
+    100% { transform: scale(0.2); opacity: 0; }
+  }
+
+  @keyframes fade-drop {
+    0%   { opacity: 1; }
+    100% { opacity: 0; transform: translateY(40px); }
+  }
+
+  /* slice halves */
+  .half-left, .half-right {
+    position: absolute;
+    width: 35px; height: 70px;
+    border-radius: 35px 0 0 35px;
+    animation: half-fly 0.5s ease-out forwards;
+    z-index: 25;
+  }
+
+  .half-right { border-radius: 0 35px 35px 0; animation-name: half-fly-r; }
+
+  @keyframes half-fly {
+    from { transform: translate(0,0) rotate(0deg); opacity: 1; }
+    to   { transform: translate(-30px, 40px) rotate(-30deg); opacity: 0; }
+  }
+  @keyframes half-fly-r {
+    from { transform: translate(0,0) rotate(0deg); opacity: 1; }
+    to   { transform: translate(30px, 40px) rotate(30deg); opacity: 0; }
+  }
+
+  /* ── Slash effect ── */
+  #slash-canvas {
+    position: absolute; inset: 0;
+    pointer-events: none;
+    z-index: 40;
+  }
+
+  /* ── Screens ── */
+  .screen {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    z-index: 100;
+    background: rgba(10, 22, 40, 0.92);
+    backdrop-filter: blur(4px);
+  }
+
+  .screen.hidden { display: none; }
+
+  .screen h1 {
+    font-family: 'Fredoka One', cursive;
+    font-size: 64px;
+    color: #ffd166;
+    text-shadow: 0 4px 20px rgba(255,209,102,0.5);
+    margin-bottom: 8px;
+    letter-spacing: 2px;
+  }
+
+  .screen h2 {
+    font-family: 'Fredoka One', cursive;
+    font-size: 32px;
+    color: white;
+    margin-bottom: 40px;
+    opacity: 0.8;
+  }
+
+  .screen p {
+    font-size: 16px;
+    color: rgba(255,255,255,0.65);
+    margin-bottom: 6px;
+    text-align: center;
+    max-width: 380px;
+    line-height: 1.6;
+  }
+
+  .btn {
+    font-family: 'Fredoka One', cursive;
+    font-size: 22px;
+    color: #0a1628;
+    background: #ffd166;
+    border: none;
+    border-radius: 50px;
+    padding: 14px 44px;
+    cursor: pointer;
+    margin-top: 28px;
+    letter-spacing: 1px;
+    transition: transform 0.15s, box-shadow 0.15s;
+    box-shadow: 0 6px 24px rgba(255,209,102,0.4);
+  }
+
+  .btn:hover { transform: translateY(-3px) scale(1.04); box-shadow: 0 10px 30px rgba(255,209,102,0.5); }
+  .btn:active { transform: scale(0.97); }
+
+  .btn.secondary {
+    background: transparent;
+    color: rgba(255,255,255,0.7);
+    border: 1.5px solid rgba(255,255,255,0.25);
+    box-shadow: none;
+    font-size: 18px;
+    padding: 10px 30px;
+    margin-top: 12px;
+  }
+
+  .btn.secondary:hover { background: rgba(255,255,255,0.08); }
+
+  /* Level complete */
+  #level-info {
+    font-family: 'Fredoka One', cursive;
+    font-size: 20px;
+    color: #ffd166;
+    margin-bottom: 6px;
+    text-align: center;
+  }
+
+  #final-score {
+    font-family: 'Fredoka One', cursive;
+    font-size: 48px;
+    color: white;
+    margin: 8px 0 20px;
+  }
+
+  /* Floating score popup */
+  .score-pop {
+    position: absolute;
+    font-family: 'Fredoka One', cursive;
+    font-size: 26px;
+    pointer-events: none;
+    z-index: 60;
+    animation: pop-up 0.8s ease-out forwards;
+  }
+
+  @keyframes pop-up {
+    0%   { opacity: 1; transform: translateY(0) scale(1); }
+    100% { opacity: 0; transform: translateY(-60px) scale(1.3); }
+  }
+
+  /* Heart loss flash */
+  .flash-red {
+    position: absolute; inset: 0;
+    background: rgba(220, 50, 50, 0.3);
+    pointer-events: none;
+    z-index: 45;
+    animation: flash-out 0.4s ease-out forwards;
+  }
+
+  @keyframes flash-out { from { opacity: 1; } to { opacity: 0; } }
+
+  /* Level transition */
+  #level-transition {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    flex-direction: column;
+    pointer-events: none;
+    z-index: 80;
+    opacity: 0;
+  }
+
+  #level-transition.show {
+    animation: level-pop 1.6s ease-out forwards;
+  }
+
+  @keyframes level-pop {
+    0%   { opacity: 0; transform: scale(0.5); }
+    20%  { opacity: 1; transform: scale(1.08); }
+    70%  { opacity: 1; transform: scale(1); }
+    100% { opacity: 0; transform: scale(1); }
+  }
+
+  #lt-text {
+    font-family: 'Fredoka One', cursive;
+    font-size: 52px;
+    color: #ffd166;
+    text-shadow: 0 4px 20px rgba(255,209,102,0.6);
+  }
+
+  #lt-sub {
+    font-family: 'Nunito', sans-serif;
+    font-size: 20px;
+    color: white;
+    opacity: 0.8;
+    margin-top: 8px;
+    text-align: center;
+    max-width: 340px;
+  }
+
+  /* progress bar */
+  #progress-bar-wrap {
+    position: absolute;
+    bottom: 60px; left: 50%; transform: translateX(-50%);
+    width: 280px; height: 8px;
+    background: rgba(255,255,255,0.12);
+    border-radius: 4px;
+    z-index: 50;
+    overflow: hidden;
+  }
+
+  #progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #ffd166, #ff9f43);
+    border-radius: 4px;
+    transition: width 0.3s;
+    width: 0%;
+  }
+</style>
+</head>
+<body>
+
+<div id="game-container">
+  <div id="bg"></div>
+  <canvas id="slash-canvas"></canvas>
+
+  <!-- HUD -->
+  <div id="hud">
+    <div id="level-badge">LEVEL 1</div>
+    <div id="score-display">0</div>
+    <div id="hearts-display">
+      <span class="heart">❤️</span>
+      <span class="heart">❤️</span>
+      <span class="heart">❤️</span>
+      <span class="heart">❤️</span>
+      <span class="heart">❤️</span>
+    </div>
+  </div>
+
+  <!-- Prompt -->
+  <div id="prompt-bar">
+    <div id="prompt-text"></div>
+  </div>
+
+  <!-- Progress bar -->
+  <div id="progress-bar-wrap">
+    <div id="progress-bar"></div>
+  </div>
+
+  <!-- Level transition overlay -->
+  <div id="level-transition">
+    <div id="lt-text"></div>
+    <div id="lt-sub"></div>
+  </div>
+
+  <!-- START SCREEN -->
+  <div class="screen" id="start-screen">
+    <h1>🍉 MathSlice</h1>
+    <h2>Slice the right fruits!</h2>
+    <p>Fruits drop from the top. Slice only the ones that match the math prompt. Wrong slice or missed fruit = lose a heart!</p>
+    <p style="margin-top:10px;">7 levels of increasing math challenge await you.</p>
+    <button class="btn" onclick="startGame()">▶ Start Game</button>
+  </div>
+
+  <!-- GAME OVER SCREEN -->
+  <div class="screen hidden" id="gameover-screen">
+    <h1>💔 Game Over</h1>
+    <div id="final-score">0</div>
+    <p>You ran out of hearts!</p>
+    <p id="go-level-text"></p>
+    <button class="btn" onclick="restartGame()">↩ Try Again</button>
+  </div>
+
+  <!-- LEVEL COMPLETE SCREEN -->
+  <div class="screen hidden" id="level-complete-screen">
+    <h1>🎉 Level Clear!</h1>
+    <div id="level-info"></div>
+    <div id="final-score-lc"></div>
+    <button class="btn" onclick="nextLevel()">Next Level →</button>
+    <button class="btn secondary" onclick="restartGame()">↩ Restart</button>
+  </div>
+
+  <!-- WIN SCREEN -->
+  <div class="screen hidden" id="win-screen">
+    <h1>🏆 You Win!</h1>
+    <h2>All 7 Levels Cleared!</h2>
+    <div id="win-score"></div>
+    <p>Amazing math skills! You sliced through every challenge!</p>
+    <button class="btn" onclick="restartGame()">Play Again</button>
+  </div>
+</div>
+
+<script>
+// ─────────────────────────────────────────
+// LEVEL DEFINITIONS
+// ─────────────────────────────────────────
+const LEVELS = [
+  {
+    num: 1,
+    prompt: 'Slice all <span class="highlight">EVEN</span> numbers',
+    shortPrompt: 'Slice EVEN numbers',
+    check: n => n % 2 === 0,
+    range: [2, 30],
+    fruitsNeeded: 8,
+    dropSpeed: 3.2,
+    spawnInterval: 2000,
+    maxOnScreen: 3,
+  },
+  {
+    num: 2,
+    prompt: 'Slice all <span class="highlight">ODD</span> numbers',
+    shortPrompt: 'Slice ODD numbers',
+    check: n => n % 2 !== 0,
+    range: [1, 31],
+    fruitsNeeded: 8,
+    dropSpeed: 3.4,
+    spawnInterval: 1900,
+    maxOnScreen: 4,
+  },
+  {
+    num: 3,
+    prompt: 'Slice all <span class="highlight">MULTIPLES OF 5</span>',
+    shortPrompt: 'Slice multiples of 5',
+    check: n => n % 5 === 0,
+    range: [1, 50],
+    fruitsNeeded: 7,
+    dropSpeed: 3.6,
+    spawnInterval: 1800,
+    maxOnScreen: 4,
+  },
+  {
+    num: 4,
+    prompt: 'Slice all <span class="highlight">FACTORS OF 20</span>',
+    shortPrompt: 'Slice factors of 20',
+    check: n => 20 % n === 0,
+    range: [1, 30],
+    fruitsNeeded: 7,
+    dropSpeed: 3.8,
+    spawnInterval: 1700,
+    maxOnScreen: 4,
+  },
+  {
+    num: 5,
+    prompt: 'Slice all <span class="highlight">PRIME</span> numbers',
+    shortPrompt: 'Slice PRIME numbers',
+    check: n => isPrime(n),
+    range: [2, 40],
+    fruitsNeeded: 8,
+    dropSpeed: 4.0,
+    spawnInterval: 1700,
+    maxOnScreen: 5,
+  },
+  {
+    num: 6,
+    prompt: 'Slice all <span class="highlight">COMPOSITE</span> numbers',
+    shortPrompt: 'Slice COMPOSITE numbers',
+    check: n => n > 1 && !isPrime(n),
+    range: [2, 40],
+    fruitsNeeded: 8,
+    dropSpeed: 4.2,
+    spawnInterval: 1600,
+    maxOnScreen: 5,
+  },
+  {
+    num: 7,
+    prompt: '',
+    shortPrompt: '',
+    check: null,
+    range: [1, 100],
+    fruitsNeeded: 10,
+    dropSpeed: 4.5,
+    spawnInterval: 1500,
+    maxOnScreen: 5,
+    special: 'greater50',
+  },
+];
+
+function isPrime(n) {
+  if (n < 2) return false;
+  for (let i = 2; i <= Math.sqrt(n); i++) if (n % i === 0) return false;
+  return true;
+}
+
+// ─────────────────────────────────────────
+// FRUIT EMOJIS & COLORS
+// ─────────────────────────────────────────
+const FRUIT_SKINS = [
+  { emoji: '🍎', color: '#c0392b', inner: '#e74c3c' },
+  { emoji: '🍊', color: '#d35400', inner: '#e67e22' },
+  { emoji: '🍋', color: '#f39c12', inner: '#f1c40f' },
+  { emoji: '🍇', color: '#8e44ad', inner: '#9b59b6' },
+  { emoji: '🍓', color: '#c0392b', inner: '#e74c3c' },
+  { emoji: '🥝', color: '#27ae60', inner: '#2ecc71' },
+  { emoji: '🍍', color: '#d4ac0d', inner: '#f1c40f' },
+  { emoji: '🍑', color: '#e67e22', inner: '#f0a500' },
+];
+
+// ─────────────────────────────────────────
+// GAME STATE
+// ─────────────────────────────────────────
+let state = {
+  screen: 'start',
+  level: 0,
+  score: 0,
+  hearts: 5,
+  fruits: [],
+  bombs: [],
+  fruitsSliced: 0,
+  fruitsNeeded: 0,
+  spawnTimer: null,
+  targetSpawnTimer: null,
+  bombTimer: null,
+  gameLoop: null,
+  running: false,
+  specialX: null,
+};
+
+// ─────────────────────────────────────────
+// STAR BACKGROUND
+// ─────────────────────────────────────────
+function makeStars() {
+  const bg = document.getElementById('bg');
+  for (let i = 0; i < 60; i++) {
+    const s = document.createElement('div');
+    s.className = 'star';
+    s.style.left = Math.random() * 100 + '%';
+    s.style.top = Math.random() * 70 + '%';
+    s.style.animationDelay = (Math.random() * 3) + 's';
+    s.style.width = s.style.height = (1 + Math.random() * 2) + 'px';
+    bg.appendChild(s);
+  }
+}
+makeStars();
+
+// ─────────────────────────────────────────
+// SLASH CANVAS
+// ─────────────────────────────────────────
+const slashCanvas = document.getElementById('slash-canvas');
+const ctx = slashCanvas.getContext('2d');
+let slashPoints = [];
+let isSlashing = false;
+
+function resizeCanvas() {
+  slashCanvas.width = window.innerWidth;
+  slashCanvas.height = window.innerHeight;
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+function drawSlash() {
+  ctx.clearRect(0, 0, slashCanvas.width, slashCanvas.height);
+  if (slashPoints.length < 2) return;
+  ctx.beginPath();
+  ctx.moveTo(slashPoints[0].x, slashPoints[0].y);
+  for (let i = 1; i < slashPoints.length; i++) {
+    ctx.lineTo(slashPoints[i].x, slashPoints[i].y);
+  }
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+  ctx.lineWidth = 3;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.shadowColor = '#ffd166';
+  ctx.shadowBlur = 8;
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+}
+
+function fadeSlash() {
+  slashPoints = slashPoints.slice(-3);
+  drawSlash();
+}
+
+// ─────────────────────────────────────────
+// POINTER EVENTS (mouse + touch)
+// ─────────────────────────────────────────
+function getPos(e) {
+  if (e.touches) {
+    return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  }
+  return { x: e.clientX, y: e.clientY };
+}
+
+document.addEventListener('mousedown', e => {
+  if (state.screen !== 'playing') return;
+  isSlashing = true;
+  slashPoints = [getPos(e)];
+});
+
+document.addEventListener('mousemove', e => {
+  if (!isSlashing || state.screen !== 'playing') return;
+  const pos = getPos(e);
+  slashPoints.push(pos);
+  if (slashPoints.length > 20) slashPoints.shift();
+  drawSlash();
+  checkSlash(pos);
+  setTimeout(fadeSlash, 120);
+});
+
+document.addEventListener('mouseup', () => {
+  isSlashing = false;
+  setTimeout(() => { slashPoints = []; ctx.clearRect(0,0,slashCanvas.width,slashCanvas.height); }, 200);
+});
+
+document.addEventListener('touchstart', e => {
+  if (state.screen !== 'playing') return;
+  e.preventDefault();
+  isSlashing = true;
+  slashPoints = [getPos(e)];
+}, { passive: false });
+
+document.addEventListener('touchmove', e => {
+  if (!isSlashing || state.screen !== 'playing') return;
+  e.preventDefault();
+  const pos = getPos(e);
+  slashPoints.push(pos);
+  if (slashPoints.length > 20) slashPoints.shift();
+  drawSlash();
+  checkSlash(pos);
+  setTimeout(fadeSlash, 120);
+}, { passive: false });
+
+document.addEventListener('touchend', () => {
+  isSlashing = false;
+  setTimeout(() => { slashPoints = []; ctx.clearRect(0,0,slashCanvas.width,slashCanvas.height); }, 200);
+});
+
+function checkSlash(pos) {
+  state.fruits.forEach(fruit => {
+    if (fruit.sliced || fruit.missed) return;
+    const rect = fruit.el.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
+    const dx = pos.x - cx, dy = pos.y - cy;
+    if (Math.sqrt(dx*dx + dy*dy) < 38) handleSlice(fruit, cx, cy);
+  });
+  state.bombs.forEach(bomb => {
+    if (bomb.sliced || bomb.missed) return;
+    const rect = bomb.el.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
+    const dx = pos.x - cx, dy = pos.y - cy;
+    if (Math.sqrt(dx*dx + dy*dy) < 38) handleBombSlice(bomb, cx, cy);
+  });
+}
+
+// ─────────────────────────────────────────
+// GAME FLOW
+// ─────────────────────────────────────────
+function startGame() {
+  document.getElementById('start-screen').classList.add('hidden');
+  state.level = 0;
+  state.score = 0;
+  state.hearts = 5;
+  updateHeartsDisplay();
+  updateScore();
+  loadLevel(0);
+}
+
+function restartGame() {
+  clearAllFruits();
+  clearInterval(state.spawnTimer);
+  clearInterval(state.targetSpawnTimer);
+  clearInterval(state.bombTimer);
+  cancelAnimationFrame(state.gameLoop);
+  state.running = false;
+  document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
+  document.getElementById('start-screen').classList.remove('hidden');
+  state.screen = 'start';
+}
+
+function loadLevel(idx) {
+  clearAllFruits();
+  clearInterval(state.spawnTimer);
+  clearInterval(state.targetSpawnTimer);
+  clearInterval(state.bombTimer);
+  state.running = false;
+
+  const lv = LEVELS[idx];
+  state.fruitsSliced = 0;
+  state.fruitsNeeded = lv.fruitsNeeded;
+  state.screen = 'playing';
+
+  // Level 7 special: pick a random X
+  if (lv.special === 'greater50') {
+    state.specialX = Math.floor(Math.random() * 60) + 20;
+    const half = Math.floor(state.specialX / 2);
+    lv.prompt = `Slice numbers <span class="highlight">greater than ${half}</span> (50% of ${state.specialX})`;
+    lv.shortPrompt = `Slice numbers > ${half}`;
+    lv.check = n => n > half;
+  }
+
+  document.getElementById('level-badge').textContent = `LEVEL ${lv.num}`;
+  document.getElementById('prompt-text').innerHTML = lv.prompt;
+  updateProgress();
+
+  showLevelTransition(`Level ${lv.num}`, lv.shortPrompt, () => {
+    state.running = true;
+    spawnFruit();
+    scheduleSpawn();
+    gameLoop();
+  });
+}
+
+function showLevelTransition(title, sub, cb) {
+  const el = document.getElementById('level-transition');
+  document.getElementById('lt-text').textContent = title;
+  document.getElementById('lt-sub').textContent = sub;
+  el.classList.remove('show');
+  void el.offsetWidth;
+  el.classList.add('show');
+  setTimeout(() => { el.classList.remove('show'); if (cb) cb(); }, 1800);
+}
+
+function scheduleSpawn() {
+  const lv = LEVELS[state.level];
+  state.spawnTimer = setInterval(() => {
+    if (!state.running) return;
+    const onScreen = state.fruits.filter(f => !f.sliced && !f.missed).length;
+    if (onScreen < lv.maxOnScreen) spawnFruit();
+  }, lv.spawnInterval);
+
+  state.targetSpawnTimer = setInterval(() => {
+    if (!state.running) return;
+    const onScreen = state.fruits.filter(f => !f.sliced && !f.missed).length;
+    if (onScreen < lv.maxOnScreen + 1) spawnFruit(true);
+  }, Math.round(lv.spawnInterval * 0.5));
+
+  state.bombTimer = setInterval(() => {
+    if (!state.running) return;
+    spawnBomb();
+  }, 5000 - state.level * 300);
+}
+
+// ─────────────────────────────────────────
+// FRUIT MANAGEMENT
+// ─────────────────────────────────────────
+let fruitIdCounter = 0;
+
+function spawnFruit(forceTarget = false) {
+  if (!state.running) return;
+  const lv = LEVELS[state.level];
+  const [min, max] = lv.range;
+  let number, isTarget;
+  if (forceTarget) {
+    let attempts = 0;
+    do {
+      number = Math.floor(Math.random() * (max - min + 1)) + min;
+      attempts++;
+    } while (!lv.check(number) && attempts < 50);
+    isTarget = lv.check(number);
+  } else {
+    number = Math.floor(Math.random() * (max - min + 1)) + min;
+    isTarget = lv.check(number);
+  }
+  const skin = FRUIT_SKINS[Math.floor(Math.random() * FRUIT_SKINS.length)];
+
+  const el = document.createElement('div');
+  el.className = 'fruit';
+  el.style.background = `radial-gradient(circle at 35% 35%, ${skin.inner}, ${skin.color})`;
+  el.style.boxShadow = `0 4px 16px rgba(0,0,0,0.4), inset 0 -3px 6px rgba(0,0,0,0.2)`;
+  el.style.border = `2px solid rgba(255,255,255,0.25)`;
+
+  const emojiEl = document.createElement('div');
+  emojiEl.className = 'fruit-emoji';
+  emojiEl.textContent = skin.emoji;
+  emojiEl.style.fontSize = '28px';
+
+  const numEl = document.createElement('div');
+  numEl.className = 'fruit-number';
+  numEl.textContent = number;
+
+  el.appendChild(emojiEl);
+  el.appendChild(numEl);
+
+  const x = 60 + Math.random() * (window.innerWidth - 140);
+  el.style.left = x + 'px';
+  el.style.top = '-80px';
+  document.getElementById('game-container').appendChild(el);
+
+  const baseSpeed = lv.dropSpeed;
+  const speed = isTarget ? baseSpeed * 1.4 : baseSpeed;
+
+  const fruit = {
+    id: fruitIdCounter++,
+    el,
+    number,
+    isTarget,
+    skin,
+    x,
+    y: -80,
+    speed,
+    sliced: false,
+    missed: false,
+  };
+
+  state.fruits.push(fruit);
+}
+
+function gameLoop() {
+  if (!state.running) return;
+  const h = window.innerHeight;
+
+  state.fruits.forEach(fruit => {
+    if (fruit.sliced || fruit.missed) return;
+    fruit.y += fruit.speed;
+    fruit.el.style.top = fruit.y + 'px';
+
+    if (fruit.y > h + 10) {
+      fruit.missed = true;
+      fruit.el.classList.add('missed');
+      setTimeout(() => removeFruit(fruit), 400);
+      if (fruit.isTarget) { loseHeart(); showScorePop('💔 Miss!', fruit.x, h - 80, '#e74c3c'); }
+    }
+  });
+
+  state.bombs.forEach(bomb => {
+    if (bomb.sliced || bomb.missed) return;
+    bomb.y += bomb.speed;
+    bomb.el.style.top = bomb.y + 'px';
+    if (bomb.y > h + 10) { bomb.missed = true; removeBomb(bomb); }
+  });
+
+  state.gameLoop = requestAnimationFrame(gameLoop);
+}
+
+function handleSlice(fruit, cx, cy) {
+  fruit.sliced = true;
+  fruit.el.classList.add('sliced');
+
+  if (fruit.isTarget) {
+    // Correct slice
+    state.score++;
+    state.fruitsSliced++;
+    updateScore();
+    updateProgress();
+    showScorePop('+1 ✓', cx, cy - 20, '#2ecc71');
+    createHalves(fruit, cx, cy);
+    setTimeout(() => removeFruit(fruit), 400);
+
+    if (state.fruitsSliced >= state.fruitsNeeded) {
+      levelComplete();
+    }
+  } else {
+    // Wrong slice
+    loseHeart();
+    showScorePop('✗ Wrong!', cx, cy - 20, '#e74c3c');
+    setTimeout(() => removeFruit(fruit), 400);
+  }
+}
+
+function createHalves(fruit, cx, cy) {
+  const container = document.getElementById('game-container');
+  const skin = fruit.skin;
+
+  for (let i = 0; i < 2; i++) {
+    const h = document.createElement('div');
+    h.className = i === 0 ? 'half-left' : 'half-right';
+    h.style.background = `radial-gradient(circle at 35% 35%, ${skin.inner}, ${skin.color})`;
+    h.style.left = (cx - 35 + i * 35) + 'px';
+    h.style.top = (cy - 35) + 'px';
+    container.appendChild(h);
+    setTimeout(() => h.remove(), 600);
+  }
+}
+
+function removeFruit(fruit) {
+  if (fruit.el && fruit.el.parentNode) fruit.el.remove();
+  state.fruits = state.fruits.filter(f => f.id !== fruit.id);
+}
+
+function clearAllFruits() {
+  state.fruits.forEach(f => { if (f.el && f.el.parentNode) f.el.remove(); });
+  state.fruits = [];
+  state.bombs.forEach(b => { if (b.el && b.el.parentNode) b.el.remove(); });
+  state.bombs = [];
+}
+
+// ─────────────────────────────────────────
+// BOMB MANAGEMENT
+// ─────────────────────────────────────────
+function spawnBomb() {
+  if (!state.running) return;
+  const lv = LEVELS[state.level];
+  const el = document.createElement('div');
+  el.className = 'bomb';
+  const emojiEl = document.createElement('div');
+  emojiEl.className = 'bomb-emoji';
+  emojiEl.textContent = '💣';
+  el.appendChild(emojiEl);
+  const x = 60 + Math.random() * (window.innerWidth - 140);
+  el.style.left = x + 'px';
+  el.style.top = '-80px';
+  document.getElementById('game-container').appendChild(el);
+  const bomb = { id: fruitIdCounter++, el, x, y: -80, speed: lv.dropSpeed * 0.9, sliced: false, missed: false };
+  state.bombs.push(bomb);
+}
+
+function handleBombSlice(bomb, cx, cy) {
+  bomb.sliced = true;
+  bomb.el.classList.add('exploded');
+  loseHeart(1.5);
+  showScorePop('💣 -1.5!', cx, cy - 20, '#ff6b35');
+  createBombExplosion(cx, cy);
+  setTimeout(() => removeBomb(bomb), 450);
+}
+
+function createBombExplosion(cx, cy) {
+  const container = document.getElementById('game-container');
+  for (let i = 0; i < 8; i++) {
+    const spark = document.createElement('div');
+    spark.style.cssText = `
+      position:absolute; width:8px; height:8px; border-radius:50%;
+      background:${['#ff6b35','#ffd166','#ff4444','#ff9f43'][i%4]};
+      left:${cx}px; top:${cy}px; pointer-events:none; z-index:60;
+      animation: spark-fly-${i} 0.5s ease-out forwards;
+    `;
+    const angle = (i / 8) * Math.PI * 2;
+    const dist = 40 + Math.random() * 30;
+    const tx = Math.cos(angle) * dist, ty = Math.sin(angle) * dist;
+    const style = document.createElement('style');
+    style.textContent = `@keyframes spark-fly-${i} { from{transform:translate(0,0);opacity:1} to{transform:translate(${tx}px,${ty}px);opacity:0} }`;
+    document.head.appendChild(style);
+    container.appendChild(spark);
+    setTimeout(() => { spark.remove(); style.remove(); }, 550);
+  }
+}
+
+function removeBomb(bomb) {
+  if (bomb.el && bomb.el.parentNode) bomb.el.remove();
+  state.bombs = state.bombs.filter(b => b.id !== bomb.id);
+}
+
+// ─────────────────────────────────────────
+// HEARTS & SCORE
+// ─────────────────────────────────────────
+function loseHeart(amount = 1) {
+  state.hearts = Math.max(0, state.hearts - amount);
+  updateHeartsDisplay();
+  flashRed();
+  if (state.hearts <= 0) gameOver();
+}
+
+function updateHeartsDisplay() {
+  const hearts = document.querySelectorAll('.heart');
+  hearts.forEach((h, i) => {
+    h.classList.remove('lost', 'half');
+    if (i < Math.floor(state.hearts)) {
+      // full heart
+    } else if (i < Math.ceil(state.hearts) && state.hearts % 1 !== 0) {
+      h.classList.add('half');
+    } else {
+      h.classList.add('lost');
+    }
+  });
+}
+
+function updateScore() {
+  document.getElementById('score-display').textContent = state.score;
+}
+
+function updateProgress() {
+  const pct = Math.min(100, (state.fruitsSliced / state.fruitsNeeded) * 100);
+  document.getElementById('progress-bar').style.width = pct + '%';
+}
+
+function showScorePop(text, x, y, color) {
+  const el = document.createElement('div');
+  el.className = 'score-pop';
+  el.textContent = text;
+  el.style.color = color;
+  el.style.left = (x - 30) + 'px';
+  el.style.top = y + 'px';
+  document.getElementById('game-container').appendChild(el);
+  setTimeout(() => el.remove(), 900);
+}
+
+function flashRed() {
+  const fl = document.createElement('div');
+  fl.className = 'flash-red';
+  document.getElementById('game-container').appendChild(fl);
+  setTimeout(() => fl.remove(), 450);
+}
+
+// ─────────────────────────────────────────
+// LEVEL COMPLETE / GAME OVER / WIN
+// ─────────────────────────────────────────
+function levelComplete() {
+  state.running = false;
+  clearInterval(state.spawnTimer);
+  clearInterval(state.targetSpawnTimer);
+  clearInterval(state.bombTimer);
+  cancelAnimationFrame(state.gameLoop);
+  clearAllFruits();
+  state.screen = 'level-complete';
+
+  if (state.level >= LEVELS.length - 1) {
+    showWin();
+    return;
+  }
+
+  const lc = document.getElementById('level-complete-screen');
+  document.getElementById('level-info').textContent = `Level ${state.level + 1} Complete!`;
+  document.getElementById('final-score-lc').innerHTML = `<span style="font-family:Fredoka One,cursive;font-size:42px;color:white;">Score: ${state.score}</span>`;
+  lc.classList.remove('hidden');
+}
+
+function nextLevel() {
+  document.getElementById('level-complete-screen').classList.add('hidden');
+  state.level++;
+  loadLevel(state.level);
+}
+
+function gameOver() {
+  state.running = false;
+  clearInterval(state.spawnTimer);
+  clearInterval(state.targetSpawnTimer);
+  clearInterval(state.bombTimer);
+  cancelAnimationFrame(state.gameLoop);
+  clearAllFruits();
+  state.screen = 'gameover';
+
+  const go = document.getElementById('gameover-screen');
+  document.getElementById('final-score').textContent = `Score: ${state.score}`;
+  document.getElementById('go-level-text').textContent = `You reached Level ${state.level + 1}`;
+  go.classList.remove('hidden');
+}
+
+function showWin() {
+  state.screen = 'win';
+  document.getElementById('win-score').innerHTML = `<span style="font-family:Fredoka One,cursive;font-size:42px;color:#ffd166;">Final Score: ${state.score}</span>`;
+  document.getElementById('win-screen').classList.remove('hidden');
+}
+</script>
+</body>
+</html>
